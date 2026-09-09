@@ -1,0 +1,33 @@
+{
+  "name": "ctxdu",
+  "version": "0.1.0",
+  "description": "du(1) for the Claude Code context window — see what is actually filling it up",
+  "type": "module",
+  "bin": {
+    "ctxdu": "./ctxdu.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "ctxdu.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "claude-code",
+    "context-window",
+    "tokens",
+    "observability"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/richardysx/ctxdu.git"
+  },
+  "homepage": "https://github.com/richardysx/ctxdu#readme",
+  "bugs": {
+    "url": "https://github.com/richardysx/ctxdu/issues"
+  },
+  "author": "richardysx"
+}

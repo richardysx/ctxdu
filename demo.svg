@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1271 849" width="1271" height="849" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="13">
+<style>
+  .bg{fill:#0d1117}
+  text{fill:#c9d1d9;white-space:pre}
+  .ln{opacity:0;animation:in 9.25s linear infinite}
+  @keyframes in{0%{opacity:0}2%{opacity:1}96%{opacity:1}100%{opacity:0}}
+  .p{fill:#3fb950}.cmd{fill:#e6edf3;font-weight:600}
+  .hdr{fill:#8b949e}.dim{fill:#6e7681}.sect{fill:#e6edf3;font-weight:600}
+  .big{fill:#e6edf3;font-weight:600}.num{fill:#79c0ff}
+  .bar{fill:#58a6ff}.track{fill:#21262d}.warn{fill:#d29922}
+  .find{fill:#f0883e}.ok{fill:#3fb950}
+  @media (prefers-reduced-motion:reduce){.ln{animation:none;opacity:1}}
+</style>
+<rect class="bg" width="100%" height="100%" rx="8"/>
+<circle cx="24" cy="20" r="5.5" fill="#ff5f57"/><circle cx="42" cy="20" r="5.5" fill="#febc2e"/><circle cx="60" cy="20" r="5.5" fill="#28c840"/>
+<text x="22" y="52" class="ln" style="animation-delay:0.000s"><tspan class="p">$</tspan> <tspan class="cmd">npx ctxdu</tspan></text>
+<text x="22" y="71" class="ln" style="animation-delay:0.055s"></text>
+<text x="22" y="90" class="ln" style="animation-delay:0.110s"><tspan class="hdr">  ctxdu — 065b346b  ·  claude-opus-5  ·  69 API calls</tspan></text>
+<text x="22" y="109" class="ln" style="animation-delay:0.165s"></text>
+<text x="22" y="128" class="ln" style="animation-delay:0.220s">  <tspan class="dim">used</tspan> <tspan class="big">203,897</tspan> <tspan class="dim">/ 1,000,000</tspan> (inferred from observed peak)   <tspan class="warn">20.4%</tspan>   <tspan class="warn">██████</tspan><tspan class="track">░░░░░░░░░░░░░░░░░░░░░░░░</tspan></text>
+<text x="22" y="147" class="ln" style="animation-delay:0.275s"></text>
+<text x="22" y="166" class="ln" style="animation-delay:0.330s">    fixed overhead      <tspan class="num">28,034</tspan>   13.7%  <tspan class="bar">███</tspan><tspan class="track">░░░░░░░░░░░░░░░░░░░░░</tspan></text>
+<text x="22" y="185" class="ln" style="animation-delay:0.385s">    model thinking      <tspan class="num">45,835</tspan>   22.5%  <tspan class="bar">█████</tspan><tspan class="track">░░░░░░░░░░░░░░░░░░░</tspan></text>
+<text x="22" y="204" class="ln" style="animation-delay:0.440s">    model reply         <tspan class="num">22,717</tspan>   11.1%  <tspan class="bar">███</tspan><tspan class="track">░░░░░░░░░░░░░░░░░░░░░</tspan></text>
+<text x="22" y="223" class="ln" style="animation-delay:0.495s">    tool call args      <tspan class="num">65,245</tspan>   32.0%  <tspan class="bar">████████</tspan><tspan class="track">░░░░░░░░░░░░░░░░</tspan></text>
+<text x="22" y="242" class="ln" style="animation-delay:0.550s">    tool results        <tspan class="num">28,747</tspan>   14.1%  <tspan class="bar">███</tspan><tspan class="track">░░░░░░░░░░░░░░░░░░░░░</tspan></text>
+<text x="22" y="261" class="ln" style="animation-delay:0.605s">    your input           <tspan class="num">7,584</tspan>    3.7%  <tspan class="bar">█</tspan><tspan class="track">░░░░░░░░░░░░░░░░░░░░░░░</tspan></text>
+<text x="22" y="280" class="ln" style="animation-delay:0.660s">    system injected      <tspan class="num">5,736</tspan>    2.8%  <tspan class="bar">█</tspan><tspan class="track">░░░░░░░░░░░░░░░░░░░░░░░</tspan></text>
+<text x="22" y="299" class="ln" style="animation-delay:0.715s">    free               796,103   79.6%</text>
+<text x="22" y="318" class="ln" style="animation-delay:0.770s"></text>
+<text x="22" y="337" class="ln" style="animation-delay:0.825s"><tspan class="sect">  Fixed overhead breakdown (spent before you type a single character)</tspan></text>
+<text x="22" y="356" class="ln" style="animation-delay:0.880s"></text>
+<text x="22" y="375" class="ln" style="animation-delay:0.935s">    ~/.claude/CLAUDE.md                             326  <tspan class="ok">&lt;- you control this</tspan></text>
+<text x="22" y="394" class="ln" style="animation-delay:0.990s">    ~/.claude/projects/&lt;proj&gt;/memory/MEMORY.md       32  <tspan class="ok">&lt;- you control this</tspan></text>
+<text x="22" y="413" class="ln" style="animation-delay:1.045s">    skills listing (14)                             684  <tspan class="ok">&lt;- you control this</tspan></text>
+<text x="22" y="432" class="ln" style="animation-delay:1.100s">    system prompt + built-in tool schemas       ~26,992  <tspan class="dim">(not controllable)</tspan></text>
+<text x="22" y="451" class="ln" style="animation-delay:1.155s"></text>
+<text x="22" y="470" class="ln" style="animation-delay:1.210s"><tspan class="sect">  Tool results — what is eating your context</tspan></text>
+<text x="22" y="489" class="ln" style="animation-delay:1.265s"></text>
+<text x="22" y="508" class="ln" style="animation-delay:1.320s">       <tspan class="num">2,286</tspan>  Bash       awk '/^function render\(a, meta\)/,/^\/\/ ── CLI/' ctxdu/c</text>
+<text x="22" y="527" class="ln" style="animation-delay:1.375s">       <tspan class="num">2,009</tspan>  Bash       python3 - &lt;&lt;'PY'</text>
+<text x="22" y="546" class="ln" style="animation-delay:1.430s">       <tspan class="num">1,845</tspan>  Bash       ls -la ~/Code 2&gt;/dev/null | head -50</text>
+<text x="22" y="565" class="ln" style="animation-delay:1.485s">       <tspan class="num">1,656</tspan>  Bash       find $M/session-report -type f | head -20</text>
+<text x="22" y="584" class="ln" style="animation-delay:1.540s">       <tspan class="num">1,378</tspan>  Bash       python3 - &lt;&lt;'PY'</text>
+<text x="22" y="603" class="ln" style="animation-delay:1.595s">       <tspan class="num">1,352</tspan>  Bash       cat $P/SKILL.md</text>
+<text x="22" y="622" class="ln" style="animation-delay:1.650s">       <tspan class="num">1,341</tspan>  Bash       cat $M/.claude-plugin/marketplace.json 2&gt;/dev/null | head </text>
+<text x="22" y="641" class="ln" style="animation-delay:1.705s">       <tspan class="num">1,093</tspan>  Bash       ls -la ~/.claude/projects/~-Co</text>
+<text x="22" y="660" class="ln" style="animation-delay:1.760s">       <tspan class="num">1,003</tspan>  Bash       claude --help 2&gt;&amp;1 | head -40</text>
+<text x="22" y="679" class="ln" style="animation-delay:1.815s">         <tspan class="num">990</tspan>  Bash       cat &gt; ~/Code/ctxdu/ctxdu.mjs &lt;&lt;'JS'</text>
+<text x="22" y="698" class="ln" style="animation-delay:1.870s">         <tspan class="num">985</tspan>  Bash       cat ~/.claude/settings.json</text>
+<text x="22" y="717" class="ln" style="animation-delay:1.925s">         <tspan class="num">785</tspan>  Bash       ls -la . | head -30</text>
+<text x="22" y="736" class="ln" style="animation-delay:1.980s"></text>
+<text x="22" y="755" class="ln" style="animation-delay:2.035s"><tspan class="sect">  Findings</tspan></text>
+<text x="22" y="774" class="ln" style="animation-delay:2.090s">    <tspan class="warn">!</tspan>  <tspan class="find">of the 28,034 fixed overhead you control only 1,042 (3.7%) — the rest is system-fixed, do not spend time here</tspan></text>
+<text x="22" y="793" class="ln" style="animation-delay:2.145s">    <tspan class="warn">!</tspan>  <tspan class="find">model thinking is 22.5% of used context — lower the thinking effort for routine work</tspan></text>
+<text x="22" y="812" class="ln" style="animation-delay:2.200s">    <tspan class="warn">!</tspan>  <tspan class="find">tool call args (65,245) exceed tool results (28,747) — long scripts are being inlined repeatedly; write them to a file and run that instead</tspan></text>
+</svg>
