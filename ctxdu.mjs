@@ -148,9 +148,20 @@ function coreCommand(cmd) {
 
 /** 从 tool_use 里提取一个人类可读的标签：文件路径 / 命令 / 查询词 */
 function labelOf(name, input = {}) {
-  // 家目录有两种形态会泄漏用户名：路径本身，以及 project slug 的横杠形式
+  // 输出是拿来分享的（issue、截图、README），必须先脱敏。
+  // 家目录有两种形态会泄漏用户名：路径本身，以及 project slug 的横杠形式。
   const slug = homedir().replace(/\//g, '-')
-  const redact = (x) => String(x).split(homedir()).join('~').split(slug).join('~')
+  const HOME_MARK = '~'
+  const SENSITIVE = /(?:~|\.)?\/?\.(ssh|aws|gnupg|kube|docker)\/[^\s'"]+/g
+  const redact = (x) => String(x)
+    .split(homedir()).join(HOME_MARK)
+    .split(slug).join(HOME_MARK)
+    // 凭据目录：文件名本身就可能暴露身份或用途
+    .replace(SENSITIVE, (_m, dir) => HOME_MARK + '/.' + dir + '/' + '<redacted>')
+    // 命令行里的密钥赋值
+    .replace(/\b([A-Z_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL)[A-Z_]*)=\S+/gi, '$1=<redacted>')
+    // URL query 里常见的 token 参数
+    .replace(/([?&])(access_token|api_key|token|key|sig|signature)=[^&\s]+/gi, '$1$2=<redacted>')
   const pick = input.file_path || input.path || input.notebook_path
   if (pick) return redact(pick)
   if (input.command) return redact(coreCommand(input.command))

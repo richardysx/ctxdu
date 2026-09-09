@@ -65,10 +65,15 @@ instead of padding the report:
 
 ## Three things measuring real sessions turned up
 
-**1. You start ~28,000 tokens in the hole.** Measured across independent clean sessions,
-the fixed overhead (system prompt, built-in tool schemas, `CLAUDE.md`, skills listing)
-lands at **27,000–28,100 tokens — 13.5%–14.1% of a 200k window** before you type a character.
-And **96% of it is not yours to change**, so `ctxdu` tells you to stop looking there.
+**1. You start tens of thousands of tokens in the hole.** Before you type a character, the
+system prompt, built-in tool schemas, `CLAUDE.md` and skills listing are already resident.
+Across independent interactive sessions on one machine this measured **27,000–28,100 tokens,
+13.5%–14.1% of a 200k window** — and only ~4% of it was under the user's control, so `ctxdu`
+tells you to stop looking there.
+
+The number is not universal: it tracks whatever tool and skill set your session loads. The
+same machine in non-interactive `-p` mode measured **11,263**. Run `ctxdu` and read your own
+figure rather than trusting this one — that is the entire point of the tool.
 
 **2. Model thinking is ~20–24% of used context** in substantive sessions. One fifth of your
 window is the model thinking to itself. That one is adjustable.

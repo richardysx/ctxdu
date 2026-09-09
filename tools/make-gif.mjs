@@ -20,9 +20,12 @@ const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 const WORK = join(tmpdir(), 'ctxdu-gif')
 
 // ── 1. 取真实输出 ────────────────────────────────────────────────────────────
-const session = process.argv[2] || ''
+const argv = process.argv.slice(2)
+const session = argv.find((a) => !a.startsWith('--')) || ''
+const ci = argv.indexOf('--cwd')                    // 会话属于哪个项目目录
+const cwd = ci >= 0 ? argv[ci + 1] : join(ROOT, '..')
 const out = execFileSync('node', [join(ROOT, 'ctxdu.mjs'), ...(session ? [session] : [])],
-  { encoding: 'utf8', cwd: join(ROOT, '..') }).replace(/\n+$/, '')
+  { encoding: 'utf8', cwd }).replace(/\n+$/, '')
 const lines = out.split('\n')
 
 // ── 2. 造 HTML 帧 ────────────────────────────────────────────────────────────
@@ -62,7 +65,7 @@ frames.push({ body: `<i class=p>$</i> <i class=cmd>${CMD}</i>`, delay: 35 })
 frames.push({ body: `<i class=p>$</i> <i class=cmd>${CMD}</i>\n` + lines.map(paint).join('\n'), delay: 600 })
 
 // 测试用：只保留最后一帧（数据量最大，用于验证 LZW 的字典增长/重置路径）
-if (process.argv.includes('--only-last')) { frames.splice(0, frames.length - 1) }
+if (argv.includes('--only-last')) { frames.splice(0, frames.length - 1) }
 
 // ── 3. Chrome 截图 ───────────────────────────────────────────────────────────
 const COLS = Math.max(...lines.map((l) => [...l].length), 20)
@@ -234,5 +237,5 @@ for (let fi = 0; fi < imgs.length; fi++) {
 push(0x3b)
 
 const gif = Buffer.from(buf)
-writeFileSync(join(ROOT, process.argv.includes('--only-last') ? 'demo-last.gif' : 'demo.gif'), gif)
-console.error(`✅ ${process.argv.includes('--only-last') ? 'demo-last.gif' : 'demo.gif'}  ${GW}x${GH}  ${imgs.length} 帧  ${(gif.length / 1024).toFixed(0)}KB  调色板 ${palette.length} 色（原始 ${uniq.length} 色）`)
+writeFileSync(join(ROOT, argv.includes('--only-last') ? 'demo-last.gif' : 'demo.gif'), gif)
+console.error(`✅ ${argv.includes('--only-last') ? 'demo-last.gif' : 'demo.gif'}  ${GW}x${GH}  ${imgs.length} 帧  ${(gif.length / 1024).toFixed(0)}KB  调色板 ${palette.length} 色（原始 ${uniq.length} 色）`)
