@@ -5,7 +5,7 @@
 When your disk fills up you don't want to be told "5% free" — you want to know which directory
 is eating 80GB. Claude Code tells you the percentage. `ctxdu` tells you what's in there.
 
-![demo](https://raw.githubusercontent.com/richardysx/ctxdu/main/demo.gif)
+![demo](demo.gif)
 
 ## Why
 
