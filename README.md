@@ -37,10 +37,27 @@ Requires Node 18+. (Not published to npm yet, so `npx ctxdu` will not work.)
 > you want. From anywhere else, `--list` shows every project and session on the machine,
 > `--project` points at one, and passing a session id alone searches them all.
 
-**Claude Code only, for now.** It reads the JSONL transcripts Claude Code writes under
-`~/.claude/projects`. The *method* — differencing the cumulative context totals the API
-already reports — works for any agent harness that records per-call token usage; only the
-reader is host-specific.
+## Supported harnesses
+
+| Harness | Flag | Notes |
+|---|---|---|
+| Claude Code | default | Window size is inferred from the observed peak; fixed overhead is broken down into `CLAUDE.md`, memory index and skills listing |
+| Codex | `--host codex` | Records its own `model_context_window`, so the window is read rather than inferred |
+
+```sh
+ctxdu --host codex --list
+ctxdu --host codex          # or set CTXDU_HOST=codex
+```
+
+The analysis is host-agnostic: differencing, attribution and bucketing never look at a
+harness-specific field. Each adapter supplies where transcripts live, how to recover the
+project path, and a `normalize` step that maps that harness's records onto one shape. The
+single hard requirement is a **per-call cumulative context total** — without it there is
+nothing to difference, and that harness cannot be supported at all.
+
+Adapters deliberately do not borrow each other's assumptions: the fixed-overhead breakdown
+only runs for a harness that has actually implemented it, because attributing Claude Code's
+`CLAUDE.md` to a Codex session would be simply wrong.
 
 ```sh
 ctxdu                 # most recent session in this project

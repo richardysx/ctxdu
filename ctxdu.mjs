@@ -28,6 +28,19 @@ const ROOT = process.env.CTXDU_HOME || homedir()
 // 因此支持一个新的 agent harness = 在这里填一个 adapter，分析逻辑一行都不用动。
 // 判定标准只有一条：**拿不到 per-call 的 token usage，就做不了**。
 
+/** 递归收集某目录下的全部 .jsonl（无依赖） */
+function walkJsonl(dir, out = [], depth = 0) {
+  if (depth > 6) return out
+  let ents = []
+  try { ents = readdirSync(dir, { withFileTypes: true }) } catch { return out }
+  for (const e of ents) {
+    const f = join(dir, e.name)
+    if (e.isDirectory()) walkJsonl(f, out, depth + 1)
+    else if (e.name.endsWith('.jsonl')) out.push(f)
+  }
+  return out
+}
+
 const HOSTS = {
   'claude-code': {
     label: 'Claude Code',
@@ -51,10 +64,89 @@ const HOSTS = {
     // resume/continue 会另起文件，靠首行 parentUuid 回溯
     linkId: (row) => row.uuid,
     parentId: (row) => row.parentUuid,
+    listFiles: () => walkJsonl(join(ROOT, '.claude', 'projects')),
+    normalize: (rows) => rows,          // 引擎的规范形状就是照它定义的
+    chains: true,                       // resume 会跨文件续接
+    explainsBaseline: true,             // 固定开销可拆解到 CLAUDE.md / skills
+  },
+
+  // ── Codex ──
+  // 差异有二：会话按日期铺开而非按项目分目录；token 用量与内容分在不同记录里。
+  // 因此 normalize 把它翻译成引擎认识的形状，其余逻辑完全复用。
+  codex: {
+    label: 'Codex',
+    listFiles: () => walkJsonl(join(ROOT, '.codex', 'sessions')),
+    pathOf: (row) => (row.type === 'session_meta' ? row.payload?.cwd : null),
+    chains: false,                      // 每个会话一个文件
+    isCall: (row) => row.type === 'assistant' && row.message?.usage,
+    callKey: (row) => row.requestId,
+    usage: (row) => {
+      const u = row.message.usage
+      return { total: u.total || 0, output: u.output || 0, thinking: u.thinking || 0, model: u.model }
+    },
+    blocks: (row) => row.message?.content || [],
+    linkId: () => null,
+    parentId: () => null,
+    windowOf: (row) => row.message?.usage?.window || 0,
+
+    /**
+     * Codex → 规范形状。
+     * token_count 事件是一次 API 调用的边界，它之前累积的 response_item 就是这一轮的内容。
+     */
+    normalize: (rows) => {
+      const out = []
+      let pending = []
+      for (const r of rows) {
+        const p = r.payload || {}
+        if (r.type === 'session_meta') { out.push({ type: 'session_meta', cwd: p.cwd }); continue }
+        if (r.type === 'response_item') {
+          if (p.type === 'message' && p.role === 'assistant')
+            pending.push({ type: 'text', text: JSON.stringify(p.content ?? '') })
+          else if (p.type === 'reasoning')
+            pending.push({ type: 'thinking', thinking: JSON.stringify(p.summary ?? '') })
+          else if (p.type === 'custom_tool_call')
+            pending.push({ type: 'tool_use', id: p.call_id, name: p.name, input: parseInput(p.input) })
+          else if (p.type === 'custom_tool_call_output')
+            out.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: p.call_id, content: p.output }] } })
+          else if (p.type === 'message' && p.role === 'user')
+            out.push({ type: 'user', message: { content: JSON.stringify(p.content ?? '') } })
+          continue
+        }
+        if (r.type === 'event_msg' && p.type === 'token_count') {
+          const u = p.info?.last_token_usage
+          if (!u) continue
+          out.push({
+            type: 'assistant', requestId: 'ord' + r.ordinal, timestamp: r.timestamp,
+            message: {
+              model: p.info?.model || 'codex',
+              content: pending,
+              usage: {
+                total: u.input_tokens || 0,              // 已含 cached_input_tokens
+                output: u.output_tokens || 0,
+                thinking: u.reasoning_output_tokens || 0,
+                window: p.info?.model_context_window || 0,
+                model: p.info?.model || 'codex',
+              },
+            },
+          })
+          pending = []
+        }
+      }
+      return out
+    },
   },
 }
 
-const HOST = HOSTS[process.env.CTXDU_HOST || 'claude-code'] || HOSTS['claude-code']
+/** Codex 的工具入参是字符串，尽量解析成对象好让 labelOf 提取文件名/命令 */
+function parseInput(x) {
+  if (x && typeof x === 'object') return x
+  try { const o = JSON.parse(x); return o && typeof o === 'object' ? o : { command: String(x) } }
+  catch { return { command: String(x ?? '') } }
+}
+
+const HOST_ARG = process.argv.indexOf('--host')
+const HOST_ID = (HOST_ARG >= 0 ? process.argv[HOST_ARG + 1] : process.env.CTXDU_HOST) || 'claude-code'
+const HOST = HOSTS[HOST_ID] || HOSTS['claude-code']
 const PROJECTS = HOST.projectsDir
 
 // ── 读取与拼接 ────────────────────────────────────────────────────────────────
@@ -136,7 +228,7 @@ function collectCalls(rows) {
     // 但会让差分看到一次巨大的负跳变，被误判成压缩 —— 一行就能毁掉整份统计。
     if (total <= 0) return
     const c = {
-      req: key, start: i, end: i,
+      req: key, start: i, end: i, row: r,
       total,
       output: m.output,
       thinking: m.thinking,
@@ -214,6 +306,8 @@ function labelOf(name, input = {}) {
 
 /** 窗口大小无法从 model 字段读出（不带 [1m] 标记），按实测峰值推断 */
 function inferWindow(calls) {
+  const declared = HOST.windowOf ? Math.max(...calls.map((c) => HOST.windowOf(c.row) || 0)) : 0
+  if (declared > 0) return { window: declared, windowInferred: false }
   const peak = Math.max(...calls.map((c) => c.total))
   const TIERS = [200000, 1000000]
   const window = TIERS.find((t) => peak <= t * 0.995) || TIERS[TIERS.length - 1]
@@ -541,6 +635,11 @@ function memoryTokens(projectDir) {
 
 function explainBaseline(baseline, projectDir, cwd) {
   const items = []
+  // 拆解依赖宿主特有的注入文件（CLAUDE.md、skills 清单…）。
+  // 没有为某宿主实现拆解时，宁可整块报作"未拆解"，也不能把别家的文件算进来。
+  if (!HOST.explainsBaseline) {
+    return { items: [{ label: t('sysPrompt'), tokens: baseline, fixable: false, approx: true }], measured: 0, baseline }
+  }
   for (const c of claudeMdChain(cwd)) if (c.tokens) items.push({ label: c.path, tokens: c.tokens, fixable: true })
   const mem = memoryTokens(projectDir)
   if (mem?.tokens) items.push({ label: mem.path, tokens: mem.tokens, fixable: true })
@@ -736,7 +835,36 @@ function render(a, meta) {
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
 
-/** 每条 transcript 记录都带 cwd，据此还原项目的真实路径（slug 不可逆） */
+/** 流式读取，找到第一条能给出项目路径的记录就停 —— 不整文件解析 */
+function projectOfFile(file) {
+  try {
+    for (const line of readFileSync(file, 'utf8').split('\n')) {
+      if (!line.trim()) continue
+      try { const o = JSON.parse(line); const p = HOST.pathOf(o); if (p) return p } catch {}
+    }
+  } catch {}
+  return null
+}
+
+let _index = null
+/** 全机会话索引：[{ id, file, mtime, project }] */
+function sessionIndex() {
+  if (_index) return _index
+  _index = []
+  for (const file of HOST.listFiles()) {
+    let mtime = 0
+    try { mtime = statSync(file).mtimeMs } catch { continue }
+    const project = projectOfFile(file)
+    if (!project) continue
+    const base = basename(file, '.jsonl')
+    const m = base.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)
+    _index.push({ id: m ? m[0] : base, file, mtime, project })
+  }
+  _index.sort((a, b) => b.mtime - a.mtime)
+  return _index
+}
+
+/** 旧接口保留给固定开销拆解用 */
 function projectPath(dir) {
   try {
     for (const f of readdirSync(dir).filter((x) => x.endsWith('.jsonl'))) {
@@ -750,11 +878,28 @@ function projectPath(dir) {
 }
 
 function knownProjects() {
-  let dirs = []
-  try { dirs = readdirSync(PROJECTS) } catch { return [] }
-  return dirs
-    .map((d) => ({ dir: join(PROJECTS, d), path: projectPath(join(PROJECTS, d)) }))
-    .filter((x) => x.path)
+  const seen = new Map()
+  for (const s of sessionIndex()) if (!seen.has(s.project)) seen.set(s.project, { path: s.project, dir: dirname(s.file) })
+  return [...seen.values()]
+}
+
+/** 挑出要分析的会话：优先当前目录，其次按 id 全局搜索 */
+function pickSession(cwd, target, projectOverride) {
+  const all = sessionIndex()
+  if (!all.length) { const e = new Error(t('noProject', cwd)); e.hint = t('noProjectNone'); throw e }
+  const base = projectOverride || cwd
+  const local = all.filter((s) => s.project === base || base.startsWith(s.project + '/') || s.project.startsWith(base + '/'))
+  if (target) {
+    const hit = (local.length ? local : all).find((s) => s.id.startsWith(target) || basename(s.file).includes(target))
+      || all.find((s) => s.id.startsWith(target) || basename(s.file).includes(target))
+    if (hit) return hit
+    const e = new Error(t('noSessionFound', target)); e.hint = ''
+    throw e
+  }
+  if (local.length) return local[0]
+  const e = new Error(t('noProject', base))
+  e.hint = t('noProjectHint') + '\n' + knownProjects().map((k) => '    cd ' + k.path.replace(homedir(), '~')).join('\n')
+  throw e
 }
 
 /** 先按 cwd 找；找不到而用户给了会话 id，就在所有项目里搜 */
@@ -832,6 +977,8 @@ OPTIONS
   --probe            With --mcp: connect to each stdio server and measure the
                      real schema cost. This actually starts those processes.
   --list             List every project and session on this machine
+  --host <name>      Agent harness to read: claude-code (default) or codex
+                     (also settable via CTXDU_HOST)
   --project <dir>    Analyse a project directory other than the current one
   --json             Machine-readable output (bucket keys are language-neutral)
   --lang <en|zh>     Output language. Default: en (or $CTXDU_LANG)
@@ -848,20 +995,17 @@ Everything runs locally. Nothing is uploaded. Home paths are redacted to ~.
 `
 
 function renderList() {
-  const L = ['']
-  const projects = knownProjects()
-  if (!projects.length) { L.push('  ' + t('noProjectNone')); return L.join('\n') + '\n' }
-  for (const p of projects) {
-    let files = []
-    try {
-      files = readdirSync(p.dir).filter((f) => f.endsWith('.jsonl'))
-        .map((f) => ({ f, m: statSync(join(p.dir, f)).mtimeMs }))
-        .sort((a, b) => b.m - a.m)
-    } catch {}
-    if (!files.length) continue
-    L.push(`  ${p.path.replace(homedir(), '~')}`)
-    for (const { f, m } of files)
-      L.push(`      ${basename(f, '.jsonl').slice(0, 8)}   ${new Date(m).toISOString().slice(0, 16).replace('T', ' ')}`)
+  const L = ['', `  ${HOST.label}`, '']
+  const by = new Map()
+  for (const s of sessionIndex()) {
+    if (!by.has(s.project)) by.set(s.project, [])
+    by.get(s.project).push(s)
+  }
+  if (!by.size) { L.push('  ' + t('noProjectNone')); return L.join('\n') + '\n' }
+  for (const [proj, list] of by) {
+    L.push(`  ${proj.replace(homedir(), '~')}`)
+    for (const s of list)
+      L.push(`      ${s.id.slice(0, 8)}   ${new Date(s.mtime).toISOString().slice(0, 16).replace('T', ' ')}`)
     L.push('')
   }
   return L.join('\n')
@@ -888,28 +1032,25 @@ function main() {
 
   const li = args.indexOf('--lang')
   const pi = args.indexOf('--project')
-  const skips = new Set([li >= 0 ? li + 1 : -1, pi >= 0 ? pi + 1 : -1])
+  const hi = args.indexOf('--host')
+  const skips = new Set([li >= 0 ? li + 1 : -1, pi >= 0 ? pi + 1 : -1, hi >= 0 ? hi + 1 : -1])
   const target = args.filter((a, i) => !a.startsWith('--') && !skips.has(i))[0]
+  const projectOverride = pi >= 0 ? args[pi + 1].replace(/^~/, homedir()) : null
 
-  // 不再强制 cd：--project 可指定目录；给了会话 id 时全局搜索
-  const base = pi >= 0 ? args[pi + 1] : null
-  const dir = base ? resolveDir(base.replace(/^~/, homedir())) : findDir(process.cwd(), target)
-  const files = readdirSync(dir).filter((f) => f.endsWith('.jsonl'))
-  if (!files.length) { console.error(t('noProject', process.cwd())); process.exit(1) }
+  const pick = pickSession(process.cwd(), target, projectOverride)
+  const dir = dirname(pick.file)
+  const file = basename(pick.file)
 
-  let file = target
-    ? files.find((f) => f.startsWith(target))
-    : files.map((f) => ({ f, m: statSync(join(dir, f)).mtimeMs })).sort((a, b) => b.m - a.m)[0].f
-  if (!file) { console.error(t('noSessionFound', target)); process.exit(1) }
-
-  const { rows, chain, broken } = buildChain(dir, file)
+  const loaded = HOST.chains ? buildChain(dir, file) : { rows: readJsonl(pick.file), chain: [pick.id.slice(0, 8)], broken: false }
+  const rows = HOST.normalize(loaded.rows)
+  const { chain, broken } = loaded
   const a = analyze(rows, broken)
-  const baselineDetail = a && !broken ? explainBaseline(a.baseline, dir, process.cwd()) : null
   if (!a) { console.error(t('noSession')); process.exit(1) }
+  const baselineDetail = a && !broken ? explainBaseline(a.baseline, dir, process.cwd()) : null
 
   if (json) {
     console.log(JSON.stringify({
-      session: basename(file, '.jsonl'), chain, broken,
+      session: pick.id, chain, broken,
       current: a.current, window: a.window, baseline: a.baseline,
       calls: a.calls.length, compactions: a.compactions,
       buckets: Object.fromEntries(a.buckets),
@@ -917,7 +1058,7 @@ function main() {
       sources: [...a.sources.values()].sort((x, y) => y.tokens - x.tokens),
     }, null, 2))
   } else {
-    console.log(render(a, { session: basename(file, '.jsonl').slice(0, 8), chain, broken, baselineDetail }))
+    console.log(render(a, { session: pick.id.slice(0, 8), chain, broken, baselineDetail }))
   }
 }
 
