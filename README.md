@@ -20,19 +20,23 @@ transcript Claude Code already writes to disk and gives you an itemised bill.
 
 ## Install
 
-```sh
-npx ctxdu            # analyse the most recent session in the current project
-```
-
-Or run it from a clone — it's a single file with **zero dependencies**:
+It's a single file with **zero dependencies**. Clone it and link it:
 
 ```sh
-git clone git@github.com:richardysx/ctxdu.git && node ctxdu/ctxdu.mjs
+git clone https://github.com/richardysx/ctxdu.git
+cd ctxdu && npm link          # puts `ctxdu` on your PATH
 ```
 
-Requires Node 18+.
+Or skip the install and run the file directly: `node /path/to/ctxdu/ctxdu.mjs`.
+
+Requires Node 18+. (Not published to npm yet, so `npx ctxdu` will not work.)
 
 ## Usage
+
+> **Run it inside a directory where you have actually used Claude Code.**
+> `ctxdu` locates transcripts by the current working directory, so running it in a
+> fresh clone or an unrelated folder finds nothing. If that happens it prints the
+> directories on your machine that do have sessions, so you can cd into one.
 
 ```sh
 ctxdu                 # most recent session in this project

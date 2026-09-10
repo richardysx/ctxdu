@@ -557,6 +557,10 @@ const DICT = {
     noSession: 'no analyzable API calls in this session',
     skillListing: (n) => `skills listing (${n})`,
     sysPrompt: 'system prompt + built-in tool schemas',
+    noProject: (cwd) => `no Claude Code sessions recorded for this directory:\n    ${cwd}`,
+    noProjectHint: '\n  ctxdu reads the transcripts Claude Code writes per project directory.\n  Run it inside a directory where you have actually used Claude Code, e.g.:\n',
+    noProjectNone: '\n  No Claude Code sessions were found on this machine at all.\n  Use Claude Code somewhere first, then run ctxdu inside that directory.',
+    noSessionFound: (t) => `no session matching "${t}" in this project`,
     unsupported: (t) => `probing ${t} not supported`,
   },
   zh: {
@@ -593,6 +597,10 @@ const DICT = {
     noSession: '该会话没有可分析的 API 调用',
     skillListing: (n) => `skills 清单（${n} 个）`,
     sysPrompt: 'system prompt + 内置工具 schema',
+    noProject: (cwd) => `这个目录下没有 Claude Code 的会话记录：\n    ${cwd}`,
+    noProjectHint: '\n  ctxdu 按项目目录读取 Claude Code 的会话记录。\n  请在你实际用过 Claude Code 的目录里运行，例如：\n',
+    noProjectNone: '\n  这台机器上没有找到任何 Claude Code 会话记录。\n  先在某个目录里用一下 Claude Code，再到那个目录运行 ctxdu。',
+    noSessionFound: (t) => `本项目中没有匹配 "${t}" 的会话`,
     unsupported: (t) => `不支持探测 ${t}`,
   },
 }
@@ -688,14 +696,43 @@ function render(a, meta) {
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
 
+/** 每条 transcript 记录都带 cwd，据此还原项目的真实路径（slug 不可逆） */
+function projectPath(dir) {
+  try {
+    for (const f of readdirSync(dir).filter((x) => x.endsWith('.jsonl'))) {
+      for (const line of readFileSync(join(dir, f), 'utf8').split('\n')) {
+        if (!line.trim()) continue
+        try { const o = JSON.parse(line); if (o.cwd) return o.cwd } catch {}
+      }
+    }
+  } catch {}
+  return null
+}
+
+function knownProjects() {
+  let dirs = []
+  try { dirs = readdirSync(PROJECTS) } catch { return [] }
+  return dirs
+    .map((d) => ({ dir: join(PROJECTS, d), path: projectPath(join(PROJECTS, d)) }))
+    .filter((x) => x.path)
+}
+
 function resolveDir(cwd) {
   const slug = cwd.replace(/\//g, '-')
   const d = join(PROJECTS, slug)
   if (existsSync(d)) return d
-  const all = readdirSync(PROJECTS)
+  let all = []
+  try { all = readdirSync(PROJECTS) } catch {}
   const hit = all.find((x) => slug.startsWith(x))
-  if (!hit) throw new Error(`没找到该目录的会话记录: ${cwd}`)
-  return join(PROJECTS, hit)
+  if (hit) return join(PROJECTS, hit)
+
+  // 不是抛异常了事 —— 告诉用户该去哪里
+  const known = knownProjects()
+  const err = new Error(t('noProject', cwd))
+  err.hint = known.length
+    ? t('noProjectHint') + '\n' + known.map((k) => '    cd ' + k.path.replace(homedir(), '~')).join('\n')
+    : t('noProjectNone')
+  throw err
 }
 
 function renderMcp(rows) {
@@ -778,12 +815,12 @@ function main() {
 
   const dir = resolveDir(process.cwd())
   const files = readdirSync(dir).filter((f) => f.endsWith('.jsonl'))
-  if (!files.length) { console.error('该项目下没有会话记录'); process.exit(1) }
+  if (!files.length) { console.error(t('noProject', process.cwd())); process.exit(1) }
 
   let file = target
     ? files.find((f) => f.startsWith(target))
     : files.map((f) => ({ f, m: statSync(join(dir, f)).mtimeMs })).sort((a, b) => b.m - a.m)[0].f
-  if (!file) { console.error(`没找到会话: ${target}`); process.exit(1) }
+  if (!file) { console.error(t('noSessionFound', target)); process.exit(1) }
 
   const { rows, chain, broken } = buildChain(dir, file)
   const a = analyze(rows, broken)
@@ -804,4 +841,11 @@ function main() {
   }
 }
 
-main()
+try {
+  main()
+} catch (e) {
+  console.error('\nctxdu: ' + (e && e.message ? e.message : String(e)))
+  if (e && e.hint) console.error(e.hint)
+  console.error('')
+  process.exit(1)
+}
