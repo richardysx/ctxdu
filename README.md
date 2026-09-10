@@ -1,9 +1,9 @@
 # ctxdu
 
-**`du` for your Claude Code context window.**
+**`du` for your coding agent's context window.**
 
 When your disk fills up you don't want to be told "5% free" — you want to know which directory
-is eating 80GB. Claude Code tells you the percentage. `ctxdu` tells you what's in there.
+is eating 80GB. Your agent tells you the percentage. `ctxdu` tells you what's in there.
 
 ![demo](demo.gif)
 
@@ -16,7 +16,8 @@ Three complaints, one root cause:
 - *"Why did this session cost so much?"*
 
 The context window filled up — and you have no idea what filled it. `ctxdu` reads the session
-transcript Claude Code already writes to disk and gives you an itemised bill.
+transcripts your agent already writes to disk and gives you an itemised bill.
+It supports **Claude Code** and **Codex**.
 
 ## Install
 
@@ -37,17 +38,24 @@ Requires Node 18+. (Not published to npm yet, so `npx ctxdu` will not work.)
 > you want. From anywhere else, `--list` shows every project and session on the machine,
 > `--project` points at one, and passing a session id alone searches them all.
 
+```sh
+ctxdu                 # most recent session in this project
+ctxdu --list          # every project and session on this machine
+ctxdu 065b346b        # a specific session; searched across projects if not local
+ctxdu --project DIR   # a project other than the current directory
+ctxdu --host codex    # read Codex sessions instead of Claude Code
+ctxdu --json          # machine-readable output
+ctxdu --lang zh       # 中文输出
+ctxdu --mcp           # which MCP servers are configured vs actually used
+ctxdu --mcp --probe   # connect to each server and measure its real schema cost
+```
+
 ## Supported harnesses
 
 | Harness | Flag | Notes |
 |---|---|---|
 | Claude Code | default | Window size is inferred from the observed peak; fixed overhead is broken down into `CLAUDE.md`, memory index and skills listing |
 | Codex | `--host codex` | Records its own `model_context_window`, so the window is read rather than inferred |
-
-```sh
-ctxdu --host codex --list
-ctxdu --host codex          # or set CTXDU_HOST=codex
-```
 
 The analysis is host-agnostic: differencing, attribution and bucketing never look at a
 harness-specific field. Each adapter supplies where transcripts live, how to recover the
@@ -57,18 +65,7 @@ nothing to difference, and that harness cannot be supported at all.
 
 Adapters deliberately do not borrow each other's assumptions: the fixed-overhead breakdown
 only runs for a harness that has actually implemented it, because attributing Claude Code's
-`CLAUDE.md` to a Codex session would be simply wrong.
-
-```sh
-ctxdu                 # most recent session in this project
-ctxdu --list          # every project and session on this machine
-ctxdu 065b346b        # a specific session; searched across projects if not local
-ctxdu --project DIR   # a project other than the current directory
-ctxdu --json          # machine-readable output
-ctxdu --lang zh       # 中文输出
-ctxdu --mcp           # which MCP servers are configured vs actually used
-ctxdu --mcp --probe   # connect to each server and measure its real schema cost
-```
+`CLAUDE.md` to a Codex session would be meaningless.
 
 ## What it measures
 
