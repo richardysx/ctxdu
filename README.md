@@ -33,14 +33,20 @@ Requires Node 18+. (Not published to npm yet, so `npx ctxdu` will not work.)
 
 ## Usage
 
-> **Run it inside a directory where you have actually used Claude Code.**
-> `ctxdu` locates transcripts by the current working directory, so running it in a
-> fresh clone or an unrelated folder finds nothing. If that happens it prints the
-> directories on your machine that do have sessions, so you can cd into one.
+> By default `ctxdu` analyses the project you are standing in, because that is usually what
+> you want. From anywhere else, `--list` shows every project and session on the machine,
+> `--project` points at one, and passing a session id alone searches them all.
+
+**Claude Code only, for now.** It reads the JSONL transcripts Claude Code writes under
+`~/.claude/projects`. The *method* — differencing the cumulative context totals the API
+already reports — works for any agent harness that records per-call token usage; only the
+reader is host-specific.
 
 ```sh
 ctxdu                 # most recent session in this project
-ctxdu 065b346b        # a specific session (prefix of the session id)
+ctxdu --list          # every project and session on this machine
+ctxdu 065b346b        # a specific session; searched across projects if not local
+ctxdu --project DIR   # a project other than the current directory
 ctxdu --json          # machine-readable output
 ctxdu --lang zh       # 中文输出
 ctxdu --mcp           # which MCP servers are configured vs actually used

@@ -721,6 +721,19 @@ function knownProjects() {
     .filter((x) => x.path)
 }
 
+/** 先按 cwd 找；找不到而用户给了会话 id，就在所有项目里搜 */
+function findDir(cwd, target) {
+  try { return resolveDir(cwd) } catch (e) {
+    if (!target) throw e
+    for (const p of knownProjects()) {
+      try {
+        if (readdirSync(p.dir).some((f) => f.endsWith('.jsonl') && f.startsWith(target))) return p.dir
+      } catch {}
+    }
+    throw e
+  }
+}
+
 function resolveDir(cwd) {
   const slug = cwd.replace(/\//g, '-')
   const d = join(PROJECTS, slug)
@@ -782,6 +795,8 @@ OPTIONS
   --mcp              Report configured MCP servers vs the ones actually called
   --probe            With --mcp: connect to each stdio server and measure the
                      real schema cost. This actually starts those processes.
+  --list             List every project and session on this machine
+  --project <dir>    Analyse a project directory other than the current one
   --json             Machine-readable output (bucket keys are language-neutral)
   --lang <en|zh>     Output language. Default: en (or $CTXDU_LANG)
   -h, --help         Show this
@@ -795,6 +810,26 @@ EXAMPLES
 
 Everything runs locally. Nothing is uploaded. Home paths are redacted to ~.
 `
+
+function renderList() {
+  const L = ['']
+  const projects = knownProjects()
+  if (!projects.length) { L.push('  ' + t('noProjectNone')); return L.join('\n') + '\n' }
+  for (const p of projects) {
+    let files = []
+    try {
+      files = readdirSync(p.dir).filter((f) => f.endsWith('.jsonl'))
+        .map((f) => ({ f, m: statSync(join(p.dir, f)).mtimeMs }))
+        .sort((a, b) => b.m - a.m)
+    } catch {}
+    if (!files.length) continue
+    L.push(`  ${p.path.replace(homedir(), '~')}`)
+    for (const { f, m } of files)
+      L.push(`      ${basename(f, '.jsonl').slice(0, 8)}   ${new Date(m).toISOString().slice(0, 16).replace('T', ' ')}`)
+    L.push('')
+  }
+  return L.join('\n')
+}
 
 function main() {
   const args = process.argv.slice(2)
@@ -813,11 +848,16 @@ function main() {
     else console.log(renderMcp(rows))
     return
   }
-  const li = args.indexOf('--lang')
-  const skip = li >= 0 ? li + 1 : -1          // --lang 的值不是位置参数
-  const target = args.filter((a, i) => !a.startsWith('--') && i !== skip)[0]
+  if (args.includes('--list')) return void process.stdout.write(renderList())
 
-  const dir = resolveDir(process.cwd())
+  const li = args.indexOf('--lang')
+  const pi = args.indexOf('--project')
+  const skips = new Set([li >= 0 ? li + 1 : -1, pi >= 0 ? pi + 1 : -1])
+  const target = args.filter((a, i) => !a.startsWith('--') && !skips.has(i))[0]
+
+  // 不再强制 cd：--project 可指定目录；给了会话 id 时全局搜索
+  const base = pi >= 0 ? args[pi + 1] : null
+  const dir = base ? resolveDir(base.replace(/^~/, homedir())) : findDir(process.cwd(), target)
   const files = readdirSync(dir).filter((f) => f.endsWith('.jsonl'))
   if (!files.length) { console.error(t('noProject', process.cwd())); process.exit(1) }
 
