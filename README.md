@@ -104,6 +104,34 @@ Add `--probe` and it performs a real MCP handshake (`initialize` → `tools/list
 stdio server and reports the measured schema size, so "you have three servers you never call"
 becomes "removing them frees N tokens on every single turn".
 
+## Letting the agent watch itself
+
+Nobody thinks to run a profiler at the moment it would help them — you notice the context is
+a problem while you are busy doing something else. So `ctxdu` also ships as a hook that puts
+the report where it can act: inside the agent's own context.
+
+```jsonc
+// settings.json
+"hooks": {
+  "PostToolUse": [
+    { "hooks": [
+      { "type": "command", "command": "node /path/to/ctxdu/hook/ctxdu-watch.mjs", "timeout": 15 }
+    ] }
+  ]
+}
+```
+
+It samples every 12th tool call (`CTXDU_WATCH_EVERY`) and stays completely silent unless
+something is worth acting on (`CTXDU_WATCH_WARN`, default 60% full). When there is, the agent
+reads one line of its own accounting:
+
+```
+ctxdu: your own tool-call arguments are 34% of context, more than everything tools have
+returned (13%) — you are inlining long scripts; write them to a file and run the file
+```
+
+If the analysis fails for any reason it exits quietly rather than interrupting the session.
+
 ## How it works
 
 The interesting part is that **`ctxdu` never counts tokens itself** — estimating tokens by
@@ -134,10 +162,10 @@ Five things in the transcript format will silently corrupt this if you don't han
    session ran with a 200k or 1M window, so it's inferred from the observed peak.
 4. **Compaction.** A negative delta means the window was compacted; accumulation resets there.
 5. **A stray call with no context accounting.** Very rarely a call's `usage` carries none of
-   the context fields, so its total reads as zero.The differencing sees a huge negative jump, calls it a
-   compaction, resets the baseline to zero, and every later delta lands in one meaningless
-   bucket. One row out of 213 was enough to wreck an entire session's numbers. Such calls are
-   skipped.
+   the context fields, so its total reads as zero. The differencing sees a huge negative jump,
+   calls it a compaction, resets the baseline to zero, and every later delta lands in one
+   meaningless bucket. One row out of 213 was enough to wreck an entire session's numbers.
+   Such calls are skipped.
 
 ## Accuracy and limits
 
