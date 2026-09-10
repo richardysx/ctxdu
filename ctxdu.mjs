@@ -95,9 +95,13 @@ function collectCalls(rows) {
       c.blocks.push(...(r.message.content || []))
       return
     }
+    const total = ctxTotal(u)
+    // 极少数调用的 usage 不带任何 context 字段（总量为 0）。它们不携带 context 信息，
+    // 但会让差分看到一次巨大的负跳变，被误判成压缩 —— 一行就能毁掉整份统计。
+    if (total <= 0) return
     const c = {
       req: key, start: i, end: i,
-      total: ctxTotal(u),
+      total,
       output: u.output_tokens || 0,
       thinking: u.output_tokens_details?.thinking_tokens || 0,
       model: r.message.model,
@@ -239,7 +243,7 @@ function analyze(rows, broken = false) {
     const prev = calls[i - 1], cur = calls[i]
     const delta = cur.total - prev.total
 
-    if (delta < 0) {           // context 缩小 = 发生了压缩或清空
+    if (delta < 0) {           // context 真的缩小了 = 压缩或清空
       compactions++
       buckets.clear(); sources.clear()
       baseline = cur.total

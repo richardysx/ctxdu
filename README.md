@@ -121,7 +121,7 @@ Turn-level attribution is therefore **exact with no tokenizer**; only the split 
 turn is proportional. The accounting self-checks: bucket totals reconcile with the reported
 context to within 1 token (rounding).
 
-Four things in the transcript format will silently corrupt this if you don't handle them:
+Five things in the transcript format will silently corrupt this if you don't handle them:
 
 1. **One API call spans multiple JSONL rows.** Thinking, text and each `tool_use` get their
    own line sharing a `requestId` — and *every one of them repeats the same `usage` object*.
@@ -133,6 +133,11 @@ Four things in the transcript format will silently corrupt this if you don't han
 3. **The window size isn't in the transcript.** `model` reads `claude-opus-5` whether the
    session ran with a 200k or 1M window, so it's inferred from the observed peak.
 4. **Compaction.** A negative delta means the window was compacted; accumulation resets there.
+5. **A stray call with no context accounting.** Very rarely a call's `usage` carries none of
+   the context fields, so its total reads as zero.The differencing sees a huge negative jump, calls it a
+   compaction, resets the baseline to zero, and every later delta lands in one meaningless
+   bucket. One row out of 213 was enough to wreck an entire session's numbers. Such calls are
+   skipped.
 
 ## Accuracy and limits
 
