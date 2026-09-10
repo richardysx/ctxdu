@@ -18,7 +18,44 @@ import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
 
 const ROOT = process.env.CTXDU_HOME || homedir()
-const PROJECTS = join(ROOT, '.claude', 'projects')
+
+// ── 宿主适配 ─────────────────────────────────────────────────────────────────
+//
+// 分析引擎（差分对账、归因、分桶）与宿主无关，它只要求两件事：
+//   1. 能按顺序读到该会话的记录
+//   2. 每次 API 调用带有累计 context 总量
+//
+// 因此支持一个新的 agent harness = 在这里填一个 adapter，分析逻辑一行都不用动。
+// 判定标准只有一条：**拿不到 per-call 的 token usage，就做不了**。
+
+const HOSTS = {
+  'claude-code': {
+    label: 'Claude Code',
+    projectsDir: join(ROOT, '.claude', 'projects'),
+    ext: '.jsonl',
+    // 每条记录都带 cwd，据此还原项目真实路径（目录名是路径的横杠形式，不可逆）
+    pathOf: (row) => row.cwd,
+    // 一次 API 调用会被拆成多行，共享 requestId 且各自复制同一份 usage
+    callKey: (row) => row.requestId,
+    isCall: (row) => row.type === 'assistant' && row.message?.usage,
+    usage: (row) => {
+      const u = row.message.usage
+      return {
+        total: (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0),
+        output: u.output_tokens || 0,
+        thinking: u.output_tokens_details?.thinking_tokens || 0,
+        model: row.message.model,
+      }
+    },
+    blocks: (row) => row.message?.content || [],
+    // resume/continue 会另起文件，靠首行 parentUuid 回溯
+    linkId: (row) => row.uuid,
+    parentId: (row) => row.parentUuid,
+  },
+}
+
+const HOST = HOSTS[process.env.CTXDU_HOST || 'claude-code'] || HOSTS['claude-code']
+const PROJECTS = HOST.projectsDir
 
 // ── 读取与拼接 ────────────────────────────────────────────────────────────────
 
@@ -37,7 +74,7 @@ function indexProject(dir) {
   for (const f of files) {
     const rows = readJsonl(join(dir, f))
     rowsOf.set(f, rows)
-    rows.forEach((r, i) => r.uuid && locate.set(r.uuid, { file: f, idx: i }))
+    rows.forEach((r, i) => { const id = HOST.linkId(r); if (id) locate.set(id, { file: f, idx: i }) })
   }
   return { rowsOf, locate }
 }
@@ -62,7 +99,7 @@ function buildChain(dir, sessionFile) {
     chain.unshift(basename(file, '.jsonl').slice(0, 8))
 
     const head = rows.find((r) => r.type === 'user' || r.type === 'assistant')
-    const parent = head?.parentUuid
+    const parent = head ? HOST.parentId(head) : null
     if (!parent) break
     const loc = locate.get(parent)
     if (!loc) { broken = true; break }   // 前史文件已删除
@@ -85,27 +122,26 @@ function collectCalls(rows) {
   const calls = []
   const byReq = new Map()
   rows.forEach((r, i) => {
-    if (r.type !== 'assistant') return
-    const u = r.message?.usage
-    if (!u) return
-    const key = r.requestId || `_${i}`
+    if (!HOST.isCall(r)) return
+    const key = HOST.callKey(r) || `_${i}`
     if (byReq.has(key)) {
       const c = byReq.get(key)
       c.end = i
-      c.blocks.push(...(r.message.content || []))
+      c.blocks.push(...HOST.blocks(r))
       return
     }
-    const total = ctxTotal(u)
+    const m = HOST.usage(r)
+    const total = m.total
     // 极少数调用的 usage 不带任何 context 字段（总量为 0）。它们不携带 context 信息，
     // 但会让差分看到一次巨大的负跳变，被误判成压缩 —— 一行就能毁掉整份统计。
     if (total <= 0) return
     const c = {
       req: key, start: i, end: i,
       total,
-      output: u.output_tokens || 0,
-      thinking: u.output_tokens_details?.thinking_tokens || 0,
-      model: r.message.model,
-      blocks: [...(r.message.content || [])],
+      output: m.output,
+      thinking: m.thinking,
+      model: m.model,
+      blocks: [...HOST.blocks(r)],
       ts: r.timestamp,
     }
     byReq.set(key, c)
@@ -706,7 +742,7 @@ function projectPath(dir) {
     for (const f of readdirSync(dir).filter((x) => x.endsWith('.jsonl'))) {
       for (const line of readFileSync(join(dir, f), 'utf8').split('\n')) {
         if (!line.trim()) continue
-        try { const o = JSON.parse(line); if (o.cwd) return o.cwd } catch {}
+        try { const o = JSON.parse(line); const p = HOST.pathOf(o); if (p) return p } catch {}
       }
     }
   } catch {}
