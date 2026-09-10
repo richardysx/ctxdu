@@ -166,8 +166,10 @@ new_input_i   = delta_i - output_tokens_(i-1)              # exact, minus what t
 ```
 
 Turn-level attribution is therefore **exact with no tokenizer**; only the split *within* a
-turn is proportional. The accounting self-checks: bucket totals reconcile with the reported
-context to within 1 token (rounding).
+turn is proportional. Rounding each share independently would let the buckets drift from the
+real total as a session grows, so each turn's remainder is folded back into its largest share:
+the bucket totals reconcile with the reported context **exactly**, on every session tested,
+for both harnesses.
 
 Five things in the transcript format will silently corrupt this if you don't handle them:
 

@@ -409,11 +409,20 @@ function analyze(rows, broken = false) {
 
     const tw = parts.reduce((a, p) => a + p.w, 0)
     if (!tw) { add('system-injected', newInput); continue }
-    for (const p of parts) {
+    // 逐项四舍五入会让各份之和不等于 newInput，误差随轮数累积。
+    // 把余数补给最大的一份，保证每轮的拆分严格守恒。
+    let assigned = 0, biggest = 0
+    const shares = parts.map((p, i) => {
       const n = Math.round((p.w / tw) * newInput)
-      add(p.kind, n)
-      if (p.meta) addSrc(`${p.meta.name}|${p.meta.key}`, p.meta, n)
-    }
+      assigned += n
+      if (p.w > parts[biggest].w) biggest = i
+      return n
+    })
+    shares[biggest] += newInput - assigned
+    parts.forEach((p, i) => {
+      add(p.kind, shares[i])
+      if (p.meta) addSrc(`${p.meta.name}|${p.meta.key}`, p.meta, shares[i])
+    })
   }
 
   const last = calls[calls.length - 1]
